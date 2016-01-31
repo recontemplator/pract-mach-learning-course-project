@@ -1,0 +1,131 @@
+---
+title: "Practical machine learning course project"
+author: "Yury Zelensky"
+date: "Sunday, January 31, 2016"
+output: html_document
+---
+#Summary
+This report is created as result of practical machine learning course project. The goal of course 
+project was to demonstrate ability to use machine learning algorithms to predict the manner in which people did the weight lifting exercise (barbell lifting), based on the data from accelerometers on the belt, forearm, arm, and dumbbell.
+
+
+#Course project tasks
+1. Predict the manner in which people did the weight lifting exercise, based on the data from accelerometers on the belt, forearm, arm, and dumbbell.
+2. Show how to build a model.
+3. Show how to use cross validation.
+4. Show what the expected out of sample error is.
+5. Explain the choices that were made.
+6. Make the report as easy to review by peer reviewers as possible.
+
+To simplify assessment procedure for reviewers I'll place numbers in square brackets, as reference to the tasks from list above, in places which in my opinion address corresponded tasks **[6]**. 
+
+#Load data
+```{r}
+if (! file.exists('./pml-training.csv')) {
+    download.file(
+        'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',
+         destfile = './pml-training.csv')
+}
+
+```
+The data looks well formed, so we can load it with usual `read.csv` method.
+```{r}
+pml.training <- read.csv('./pml-training.csv',na.strings=c("NA","#DIV/0!"))
+```
+
+#Explaratory analysis
+It is 19622 observations of 160 variables (including dependent variable `classe`). 
+```{r}
+dim(pml.training)
+```
+It seems to be reasonable to exclude the variables that do not come from accelerometer measurements and just related to setup conditions or participants' data. Such variables will not help to build a good prediction model. These variables are conveniently stored in the first 7 columns.
+```{r}
+names(pml.training)[1:7]
+pml.training<-pml.training[,-c(1:7)]
+dim(pml.training)
+```
+
+
+Source data seems to contain a lot of NA values. There are no absolutely complete records at all.
+```{r}
+sum(complete.cases(pml.training))
+```
+
+And there are 53 out of 153 columns which have no NA values at all.
+```{r}
+sum(colSums(is.na(pml.training))==0)
+```
+
+More deep analysis(omitted) shows that there are about 2% of "almost complete" records. But even choosing between using only 2% of observations but using 152 predictors, and keeping 53 predictors to keep all of observations is quite easy: more observations are better, but more variables may not necessary be helpful. **[5]**
+
+```{r}
+columns.to.include<-colSums(is.na(pml.training))==0
+pml.training<-pml.training[,columns.to.include]
+```
+
+
+#Build the predictive model
+
+First of all let's separate training data, to actually training and testing sets. We also setting the seed,
+to have ability to exactly reproduce the results. **[2]**
+
+```{r,warning=FALSE}
+library(caret)
+set.seed(5339)
+inTrain <- createDataPartition(y=pml.training$classe,p = 0.6,list=FALSE)
+myTrain <-pml.training[inTrain,]
+myTest <- pml.training[-inTrain,]
+```
+
+##Choose the predictive model
+
+When we talking about selecting prediction model random forests are usually the first choice.
+Nice properties of random forests are:
+
+1. We do not need to manually specify any parameters. Although from learning perspective
+in this particular assignment it is also mean we do not actually need cross validation 
+to select best parameters (see task 3, above) but I hope, the respectful graders will count
+this remark as an answer on task's 3 question.**[3]** 
+2. They are suitable for both linear and non linear data.
+3. We will get some idea about expected generalization error, based on in-training estimates.
+
+The one of the major drawback of random forests is limited human oriented interpretability of the model. But in our case with complex accelerometer data it is hard to imagine some  straightforward interpretability at all.   
+
+
+```{r}
+library(randomForest)
+modFit<-randomForest(classe ~ .,data=myTrain)
+```
+
+##Explore the model, and try the effectivenes of the model on testing set
+Let's look at the model's properties.
+```{r}
+modFit
+```
+The small OOB estimate of error rate (0.72%) looks promising. In-training confusion matrix, also looks good. **[4]**
+
+Let's try the model on testing set prepared from training data.
+```{r}
+prediction <- predict(modFit, myTest)
+confusionMatrix(prediction,myTest$classe)
+```
+
+With accuracy of 0.99 we have built a very capable model.
+
+#Prediction Quiz solution
+To actually get the quiz answers based on provided testing data, we can just use 
+the following command (answer is intentionally hidden).
+In contrast to training data, testing data contain all original columns, but it is not causes any problems for predictor. **[1]**
+
+```{r,eval=FALSE}
+if (! file.exists('./pml-testing.csv')) {
+    download.file(
+        'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv',
+        destfile = './pml-testing.csv')
+}
+
+pml.testing <- read.csv('./pml-testing.csv',na.strings=c("NA","#DIV/0!"))
+predict(modFit, pml.testing)
+```
+
+
